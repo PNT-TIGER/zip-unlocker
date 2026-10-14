@@ -110,6 +110,33 @@ gen_unlimited() {
     hackelbaba vippnl tgrteam official gamer legend dark ghost killer)
   local -a SUF=("" 123 1234 12345 123456 1 12 420 786 007 2023 2024 2025
     2026 "@" "!" "@123" bd 24 71 99 00 777 111)
+  # Bangladeshi words: places, names, common Bangla words, religious words
+  local -a BDW=(bangladesh bangla bengali dhaka chattogram chittagong
+    khulna rajshahi sylhet barishal barisal rangpur mymensingh comilla
+    cumilla gazipur narayanganj coxsbazar bogura jessore jashore kushtia
+    pabna tangail dinajpur faridpur noakhali feni chandpur kishoreganj
+    manikganj narsingdi gopalganj madaripur satkhira bagerhat chuadanga
+    jhenaidah magura narail meherpur barguna bhola patuakhali pirojpur
+    bandarban rangamati khagrachari sunamganj habiganj moulvibazar
+    netrokona jamalpur sherpur kurigram gaibandha lalmonirhat nilphamari
+    panchagarh thakurgaon joypurhat naogaon natore sirajganj brahmanbaria
+    lakshmipur shariatpur rajbari munshiganj rahim karim abdul mohammad
+    ahmed hossain islam uddin khan ali akter begum khatun sultana parvin
+    fatema ayesha sumon rubel shakil arif roni sohel masud kamal jamal
+    anwar mahmud hasan rakib ratul rifat tanvir fahim naim shanto sabbir
+    imran mehedi shakib tamim mushfiq mashrafe liton mustafiz taskin
+    bhalobasha bhalo desh deshi gram grameen shundor sundor taka bari
+    ghor bondhu prem bhalobashi ami tumi amar sonar sonarbangla bijoy
+    shadhin shadhinota muktijuddho ekattor bhasha noboborsho pohela
+    boishakh rickshaw nouka ilish hilsa panta bhaat biriyani kacchi
+    tehari fuchka jhalmuri adda khela cricket football allah allahu
+    akbar bismillah alhamdulillah mashallah inshallah subhanallah
+    ramadan ramjan eid eidmubarak muslim namaz roza iftar seheri haji
+    hajj makkah madina madinah quran kuran hadis hadith nabi rasul
+    muhammad grameenphone banglalink robi teletalk airtel)
+  local -a BDS=("" 1971 1952 71 52 123 1234 12345 123456 420 786 111
+    777 999 007 2024 2025 2026 1 12 21 16 26 24 99 00 "@" "!" "@123"
+    bd BD)
   # 1) numbers: plain + 6-digit padded, interleaved (0..99999)
   for n in $(seq 0 99999); do printf '%s\n' "$n"; printf '%06d\n' "$n"; done
   # 2) dates DDMMYYYY + YYYYMMDD
@@ -121,7 +148,15 @@ gen_unlimited() {
       done
     done
   done
-  # 3) word + suffix combos
+  # 3) Bangladeshi words + suffixes, plus word pairs
+  for w in "${BDW[@]}"; do
+    for s in "${BDS[@]}"; do printf '%s%s\n' "$w" "$s"; done
+    for s in "${BDS[@]}"; do printf '%s%s\n' "${w^}" "$s"; done
+  done
+  for w in "${BDW[@]:0:40}"; do
+    for w2 in "${BDW[@]:0:40}"; do printf '%s%s\n' "$w" "$w2"; done
+  done
+  # 4) word + suffix combos
   for w in "${CORE[@]}"; do
     for s in "${SUF[@]}"; do printf '%s%s\n' "$w" "$s"; done
     for s in "${SUF[@]}"; do printf '%s%s\n' "${w^}" "$s"; done
@@ -135,6 +170,25 @@ gen_unlimited() {
   # 7) brute force: lowercase, then lowercase+digits
   for L in 1 2 3 4 5 6 7 8; do gen_len "$L" "" "abcdefghijklmnopqrstuvwxyz"; done
   for L in 1 2 3 4 5 6 7; do gen_len "$L" "" "0123456789abcdefghijklmnopqrstuvwxyz"; done
+  # 8) ENDLESS: ever-longer candidates — this loop never finishes,
+  #    so the password stream NEVER runs out
+  L=8
+  while true; do
+    gen_len "$L" "" "0123456789abcdefghijklmnopqrstuvwxyz"
+    gen_len "$L" "" "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    L=$((L + 1))
+  done
+}
+
+# test one candidate (runs in parallel batches of 4); globals:
+# TGR_CUR_FILE = archive being attacked, TGR_FF = found-password file
+try_one() {
+  local cand="$1"
+  if 7z t -p"$cand" "$TGR_CUR_FILE" >/dev/null 2>&1; then
+    printf '%s' "$cand" > "$TGR_FF"
+  else
+    printf "${R}WRONG : %s${N}\n" "$cand"
+  fi
 }
 
 success_box() {
@@ -168,6 +222,10 @@ attack_file() {
   pf="$WORK_DIR/prog_$key"
   [ -f "$pf" ] && state=$(cat "$pf" 2>/dev/null)
 
+  TGR_CUR_FILE="$file"
+  TGR_FF="$WORK_DIR/.ff_$key"
+  rm -f "$TGR_FF"
+
   printf "\n${Y}[*] File    : %s${N}\n" "$file"
   printf "${Y}[*] Wordlist: %s (%s ta password)${N}\n" "$list" "$total"
 
@@ -181,17 +239,23 @@ attack_file() {
   fi
   printf "${Y}[*] Password check shuru... (bondho korte Ctrl+C)${N}\n\n"
 
-  # Phase 1: wordlist
+  # Phase 1: wordlist (4 parallel checks — super fast)
   if [ "$start" -lt "$total" ]; then
     while IFS= read -r pw || [ -n "$pw" ]; do
       pw="${pw%$'\r'}"
       [ -z "$pw" ] && continue
       i=$((i + 1))
       [ "$i" -le "$start" ] && continue
-      if 7z t -p"$pw" "$file" >/dev/null 2>&1; then found="$pw"; break; fi
-      printf "${R}[%s/%s] WRONG : %s${N}\n" "$i" "$total" "$pw"
-      if [ $((i % 50)) -eq 0 ]; then echo "$i" > "$pf"; fi
+      [ -f "$TGR_FF" ] && break
+      try_one "$pw" &
+      if [ $((i % 4)) -eq 0 ]; then wait; fi
+      if [ $((i % 200)) -eq 0 ]; then
+        echo "$i" > "$pf"
+        printf "${Y}[*] %s/%s try hoyeche...${N}\n" "$i" "$total"
+      fi
     done < "$list"
+    wait
+    [ -f "$TGR_FF" ] && found="$(cat "$TGR_FF")"
   fi
 
   # Phase 2: unlimited — runs until the password is found or user stops
@@ -204,16 +268,22 @@ attack_file() {
     echo "U $skip" > "$pf"
     while IFS= read -r pw; do
       [ -z "$pw" ] && continue
+      [ -f "$TGR_FF" ] && break
       u=$((u + 1))
-      if 7z t -p"$pw" "$file" >/dev/null 2>&1; then found="$pw"; break; fi
-      printf "${R}[UNLIMITED %s] WRONG : %s${N}\n" "$u" "$pw"
-      if [ $((u % 200)) -eq 0 ]; then echo "U $((skip + u))" > "$pf"; fi
+      try_one "$pw" &
+      if [ $((u % 4)) -eq 0 ]; then wait; fi
+      if [ $((u % 200)) -eq 0 ]; then
+        echo "U $((skip + u))" > "$pf"
+        printf "${Y}[*] Unlimited: %s ta try hoyeche...${N}\n" "$u"
+      fi
     done < <(gen_unlimited | tail -n +$((skip + 1)))
+    wait
+    [ -f "$TGR_FF" ] && found="$(cat "$TGR_FF")"
   fi
 
   echo
   if [ -n "$found" ]; then
-    rm -f "$pf"
+    rm -f "$pf" "$TGR_FF"
     success_box "$file" "$found"
   else
     printf "${R}[X] Check theme gelo. Abar chalale resume hobe.${N}\n"
