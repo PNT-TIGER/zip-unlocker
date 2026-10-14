@@ -14,11 +14,35 @@ welcome, loading bar).
 
 ## Install (Termux)
 
+Copy the commands **one by one** — paste each into Termux and press Enter.
+
+**Step 1 — install the packages:**
+
 ```bash
 pkg update -y && pkg install -y git p7zip
+```
+
+**Step 2 — allow storage access:**
+
+```bash
 termux-setup-storage
+```
+
+**Step 3 — download the tool:**
+
+```bash
 git clone https://github.com/PNT-TIGER/zip-unlocker.git
+```
+
+**Step 4 — enter the folder:**
+
+```bash
 cd zip-unlocker
+```
+
+**Step 5 — run the tool:**
+
+```bash
 bash unlock.sh
 ```
 
@@ -39,7 +63,11 @@ channel, and **3 (Exit)** to leave the tool.
 ## Update
 
 ```bash
-cd zip-unlocker && git pull
+cd zip-unlocker
+```
+
+```bash
+git pull
 ```
 
 ## Notes
